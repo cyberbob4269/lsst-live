@@ -1,0 +1,20 @@
+Postiz .env setup — JWT_SECRET pre-seeded by Vera Terminal (2026-07-18)
+=======================================================================
+
+How to activate (Git Bash, from vera-terminal/packaging/postiz/):
+
+    cp .env.example .env
+
+Then open .env and make exactly these edits:
+
+1. JWT_SECRET — replace the placeholder with this generated per-install secret:
+
+   16825e330b913594962df9c0b4daaea568769a5dc53c9127ddc55b88337f4e24
+
+2. X_API_KEY / X_API_SECRET — paste the key and secret from your X developer
+   app (the same credentials you use in vera-home).
+
+Everything else in .env.example (DATABASE_URL, REDIS_URL, the three localhost
+URLs) stays as-is — it matches the vendored docker-compose.yml.
+
+Then: Social view in Vera Terminal → Re-check → Start Postiz.

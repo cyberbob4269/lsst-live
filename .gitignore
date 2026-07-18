@@ -1,0 +1,8 @@
+node_modules
+/dist
+src-tauri/target
+src-tauri/gen/schemas
+*.log
+packaging/postiz/.env
+# Per-workspace app state: settings + chat history (Phase 6 polish).
+workspace/.vera/
