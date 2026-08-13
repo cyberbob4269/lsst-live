@@ -3,9 +3,12 @@
 // API with tool_use/tool_result blocks. Both paths convert to/from the
 // internal model in ./types.ts.
 //
-// All requests go through tauri-plugin-http's fetch, which runs in the
-// Rust backend — no CORS, and the allowed origins are whitelisted in
-// src-tauri/capabilities/default.json. Non-streaming for v1, 60 s timeout.
+// All PROVIDER requests go through the native-TLS Rust proxy (./httpProxy.ts,
+// commands in src-tauri/src/http_proxy.rs) — reqwest with schannel trusts the
+// Windows root store, so TLS-intercepting AV cannot break them the way
+// tauri-plugin-http's bundled webpki roots did. Non-streaming for v1,
+// 60 s timeout. The Rust proxy enforces its own hardcoded host allowlist, so
+// custom base URLs must point at an allowlisted provider host.
 //
 // Non-secret config (base URLs, models) persists in localStorage AND in
 // `<workspace>/.vera/settings.json` via ./settingsStore.ts — the file wins on
@@ -13,7 +16,7 @@
 // separate stores). API keys never touch either — they come from the OS
 // credential store (./ipc.ts).
 
-import { fetch } from "@tauri-apps/plugin-http";
+import { proxyPost } from "./httpProxy";
 import { loadSettingsFile, saveSettingsFile } from "./settingsStore";
 import type { AssistantReply, ChatMessage, ToolCall, ToolSpec } from "./types";
 
@@ -101,9 +104,13 @@ export async function chatCompletion(
     : openAiCompletion(config, apiKey, messages, tools);
 }
 
-async function throwHttpError(res: Response): Promise<never> {
-  const body = (await res.text()).slice(0, 2000);
-  throw new Error(`HTTP ${res.status} ${res.statusText}${body ? ` — ${body}` : ""}`);
+function bodyText(bytes: Uint8Array): string {
+  return new TextDecoder().decode(bytes);
+}
+
+async function throwHttpError(status: number, bytes: Uint8Array): Promise<never> {
+  const body = bodyText(bytes).slice(0, 2000);
+  throw new Error(`HTTP ${status}${body ? ` — ${body}` : ""}`);
 }
 
 /* ---- OpenAI-compatible path (xAI / OpenAI / Kimi) ---- */
@@ -139,13 +146,13 @@ async function openAiCompletion(
   messages: ChatMessage[],
   tools: ToolSpec[]
 ): Promise<AssistantReply> {
-  const res = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
+  const res = await proxyPost(
+    `${config.baseUrl.replace(/\/$/, "")}/chat/completions`,
+    {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
+    JSON.stringify({
       model: config.model,
       messages: toOpenAiMessages(messages),
       ...(tools.length
@@ -158,10 +165,10 @@ async function openAiCompletion(
         : {}),
       stream: false,
     }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) await throwHttpError(res);
-  const data = (await res.json()) as {
+    REQUEST_TIMEOUT_MS
+  );
+  if (res.status < 200 || res.status >= 300) await throwHttpError(res.status, res.bytes);
+  const data = JSON.parse(bodyText(res.bytes)) as {
     choices?: { message?: { content?: string | null; tool_calls?: OpenAiToolCall[] } }[];
   };
   const msg = data.choices?.[0]?.message;
@@ -243,14 +250,14 @@ async function anthropicCompletion(
   tools: ToolSpec[]
 ): Promise<AssistantReply> {
   const { system, messages: anthroMessages } = toAnthropicMessages(messages);
-  const res = await fetch(`${config.baseUrl.replace(/\/$/, "")}/v1/messages`, {
-    method: "POST",
-    headers: {
+  const res = await proxyPost(
+    `${config.baseUrl.replace(/\/$/, "")}/v1/messages`,
+    {
       "content-type": "application/json",
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
+    JSON.stringify({
       model: config.model,
       max_tokens: 4096,
       ...(system ? { system } : {}),
@@ -265,10 +272,10 @@ async function anthropicCompletion(
           }
         : {}),
     }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) await throwHttpError(res);
-  const data = (await res.json()) as {
+    REQUEST_TIMEOUT_MS
+  );
+  if (res.status < 200 || res.status >= 300) await throwHttpError(res.status, res.bytes);
+  const data = JSON.parse(bodyText(res.bytes)) as {
     content?: (
       | { type: "text"; text: string }
       | { type: "tool_use"; id: string; name: string; input: unknown }

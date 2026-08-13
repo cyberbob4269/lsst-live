@@ -7,8 +7,10 @@
 //                                    never publishes or schedules live
 //   GET  /public/v1/posts          — recent posts/drafts (date range query)
 //
-// Auth is a Bearer API key created in Postiz settings, stored in the OS
-// credential store under provider "postiz". The base URL defaults to
+// Auth is the raw API key in the Authorization header — NO "Bearer " prefix
+// (verified live 2026-07-18: Postiz returns 401 with it, 200 without). The
+// key is created in Postiz settings (Developers → Public API) and stored in
+// the OS credential store under provider "postiz". The base URL defaults to
 // http://localhost:4007/api and is editable in the Social view (plain text,
 // localStorage). localhost is already in the http-plugin scope.
 //
@@ -52,14 +54,14 @@ export class PostizKeyMissingError extends Error {
 async function apiKey(): Promise<string> {
   const key = await keyGet("postiz");
   if (!key) throw new PostizKeyMissingError();
-  return key;
+  return key.trim(); // guard against paste whitespace
 }
 
 async function request<T>(path: string, init?: { method?: string; body?: BodyInit }): Promise<T> {
   const key = await apiKey();
   const res = await fetch(`${getPostizBaseUrl()}/public/v1${path}`, {
     method: init?.method ?? "GET",
-    headers: { authorization: `Bearer ${key}` },
+    headers: { authorization: key },
     body: init?.body ?? null,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });

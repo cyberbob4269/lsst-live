@@ -11,8 +11,13 @@
 // self-spawned process tree on exit.
 // Phase 5: Social suite — Postiz docker-compose lifecycle (postiz) plus
 // binary fs commands for generated/upload media.
+// Phase 6: provider API calls via a native-TLS HTTP proxy (http_proxy) so
+// TLS-intercepting AV (Windows root store) cannot break them.
+// Phase 7: first-run experience — the Welcome view drives setup; postiz gains
+// postiz_write_env to render the stack's .env from .env.example in one click.
 
 mod fs_cmds;
+mod http_proxy;
 mod keyring_cmds;
 mod postiz;
 mod pty;
@@ -76,6 +81,9 @@ pub fn run() {
             postiz::postiz_status,
             postiz::postiz_start,
             postiz::postiz_stop,
+            postiz::postiz_write_env,
+            http_proxy::proxy_post,
+            http_proxy::proxy_get,
         ])
         .setup(|app| {
             use tauri::Manager;

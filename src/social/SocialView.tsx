@@ -2,8 +2,10 @@
 // every 5 s while the view is visible), then a three-pane workbench:
 //
 //   A "no-docker"  — Docker CLI absent: install instructions + Re-check.
-//   B "stopped"    — Docker present, stack down: Start Postiz (+ .env
-//                    missing warning with exact fix steps).
+//   B "stopped"    — Docker present, stack down: Start Postiz. A missing
+//                    .env gets a friendly one-liner + a jump to the Welcome
+//                    setup (Phase 7), with the manual steps kept in a
+//                    collapsed "Advanced" details for power users.
 //   C "need-key"   — stack healthy, no Postiz API key in the keyring:
 //                    account/channel/API-key walkthrough + paste field.
 //   D "workbench"  — Compose (textarea + char count + AI draft + media
@@ -16,7 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { chatCompletion, loadProviderConfigs } from "../agent/providers";
-import { keyGet, keySet } from "../agent/ipc";
+import { keyDelete, keyGet, keySet } from "../agent/ipc";
 import { fsListDir, fsReadBinary } from "../ide/ipc";
 import { postizStart, postizStatus, postizStop, type PostizStatus } from "./ipc";
 import { generateImage } from "./grokImagine";
@@ -50,11 +52,19 @@ function deriveState(status: PostizStatus | null, hasKey: boolean): UiState {
   return "workbench";
 }
 
-export default function SocialView({ visible }: { visible: boolean }) {
+export default function SocialView({
+  visible,
+  onOpenWelcome,
+}: {
+  visible: boolean;
+  /** Phase 7: jump to the Welcome setup concierge (writes the Postiz .env). */
+  onOpenWelcome: () => void;
+}) {
   const [status, setStatus] = useState<PostizStatus | null>(null);
   const [hasKey, setHasKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmRemoveKey, setConfirmRemoveKey] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -105,6 +115,17 @@ export default function SocialView({ visible }: { visible: boolean }) {
     }
   }, []);
 
+  // Delete the saved Postiz API key so the user can re-enter it — the view
+  // drops back to the "need-key" onboarding card automatically (deriveState).
+  const doRemoveKey = useCallback(async () => {
+    try {
+      await keyDelete("postiz");
+    } catch (err) {
+      console.error("[vera] key_delete(postiz) failed", err);
+    }
+    setHasKey(false);
+  }, []);
+
   const uiState = deriveState(status, hasKey);
 
   const chipClass =
@@ -135,6 +156,22 @@ export default function SocialView({ visible }: { visible: boolean }) {
           {status?.state === "running" && (
             <button className="settings-btn is-danger" disabled={busy} onClick={() => void doStop()}>
               Stop Postiz
+            </button>
+          )}
+          {hasKey && (
+            <button
+              className={`settings-btn${confirmRemoveKey ? " is-danger" : ""}`}
+              title="Delete the saved Postiz API key so you can enter a new one"
+              onClick={() => {
+                if (!confirmRemoveKey) {
+                  setConfirmRemoveKey(true);
+                  return;
+                }
+                setConfirmRemoveKey(false);
+                void doRemoveKey();
+              }}
+            >
+              {confirmRemoveKey ? "Confirm remove key" : "Change API key"}
             </button>
           )}
         </div>
@@ -185,21 +222,34 @@ export default function SocialView({ visible }: { visible: boolean }) {
             <h2 className="settings-card-title">Postiz stack is not running</h2>
             {!status.envPresent && (
               <div className="soc-warning">
-                <p className="soc-warning-title">Postiz .env is missing</p>
-                <ol className="muted soc-steps">
-                  <li>
-                    Copy <code>.env.example</code> to <code>.env</code> in the Postiz directory
-                    (<code>packaging/postiz/</code> in dev, <code>postiz/</code> next to the
-                    installed app)
-                  </li>
-                  <li>
-                    Set <code>JWT_SECRET</code> to a long random string
-                  </li>
-                  <li>
-                    Add <code>X_API_KEY</code> / <code>X_API_SECRET</code> (your X developer app
-                    credentials)
-                  </li>
-                </ol>
+                <p className="soc-warning-title">Postiz needs a one-time config file</p>
+                <p className="muted soc-p">
+                  Nothing is wrong — Postiz just hasn't been configured yet. The Welcome
+                  setup writes the file for you in one click (a fresh random secret
+                  included), then starts the stack.
+                </p>
+                <div className="ds-actions">
+                  <button className="settings-btn" onClick={onOpenWelcome}>
+                    Open the Welcome setup
+                  </button>
+                </div>
+                <details className="soc-advanced">
+                  <summary>Advanced: manual .env steps</summary>
+                  <ol className="muted soc-steps">
+                    <li>
+                      Copy <code>.env.example</code> to <code>.env</code> in the Postiz directory
+                      (<code>packaging/postiz/</code> in dev, <code>postiz/</code> next to the
+                      installed app)
+                    </li>
+                    <li>
+                      Set <code>JWT_SECRET</code> to a long random string
+                    </li>
+                    <li>
+                      Add <code>X_API_KEY</code> / <code>X_API_SECRET</code> (your X developer app
+                      credentials)
+                    </li>
+                  </ol>
+                </details>
               </div>
             )}
             <p className="muted soc-p">

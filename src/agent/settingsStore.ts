@@ -21,11 +21,17 @@ export interface SettingsFile {
     autoApproveReads: boolean | null;
     speakReplies: boolean | null;
   };
+  welcome: {
+    /** Phase 7: when true, the app boots straight to the IDE even while
+     *  first-run setup is incomplete. */
+    dontShowOnBoot: boolean | null;
+  };
 }
 
 const EMPTY_SETTINGS: SettingsFile = {
   providers: {},
   chat: { selectedProviderId: null, autoApproveReads: null, speakReplies: null },
+  welcome: { dontShowOnBoot: null },
 };
 
 /** Read `.vera/settings.json`; returns null when missing or corrupt (callers
@@ -41,6 +47,9 @@ export async function loadSettingsFile(): Promise<SettingsFile | null> {
         autoApproveReads: raw.chat?.autoApproveReads ?? null,
         speakReplies: raw.chat?.speakReplies ?? null,
       },
+      welcome: {
+        dontShowOnBoot: raw.welcome?.dontShowOnBoot ?? null,
+      },
     };
   } catch {
     return null;
@@ -53,12 +62,14 @@ export async function loadSettingsFile(): Promise<SettingsFile | null> {
 export async function saveSettingsFile(patch: {
   providers?: SettingsFile["providers"];
   chat?: Partial<SettingsFile["chat"]>;
+  welcome?: Partial<SettingsFile["welcome"]>;
 }): Promise<void> {
   try {
     const current = (await loadSettingsFile()) ?? EMPTY_SETTINGS;
     const next: SettingsFile = {
       providers: patch.providers ?? current.providers,
       chat: { ...current.chat, ...patch.chat },
+      welcome: { ...current.welcome, ...patch.welcome },
     };
     await fsEnsureDir(VERA_DIR);
     await fsWriteFile(SETTINGS_PATH, JSON.stringify(next, null, 2));

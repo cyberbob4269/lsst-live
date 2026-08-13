@@ -8,11 +8,12 @@
 //     → raw MP3 bytes (played via Blob + object URL + <audio>)
 //
 // The API key comes from the OS credential store via key_get("xai") — never
-// from disk, never logged. Only one clip plays at a time: starting a new
-// clip stops the current one, and object URLs are revoked when playback
-// ends or is stopped.
+// from disk, never logged. The POST goes through the native-TLS Rust proxy
+// (./httpProxy.ts) so TLS-intercepting AV cannot break it. Only one clip
+// plays at a time: starting a new clip stops the current one, and object
+// URLs are revoked when playback ends or is stopped.
 
-import { fetch } from "@tauri-apps/plugin-http";
+import { proxyPost } from "./httpProxy";
 import { keyGet } from "./ipc";
 
 const XAI_TTS_URL = "https://api.x.ai/v1/tts";
@@ -84,25 +85,25 @@ export async function speakText(text: string, voice: string = DEFAULT_VOICE): Pr
   }
   const voiceId = voice.toLowerCase() === "eve" ? "Eve" : DEFAULT_VOICE;
 
-  const res = await fetch(XAI_TTS_URL, {
-    method: "POST",
-    headers: {
+  const res = await proxyPost(
+    XAI_TTS_URL,
+    {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
+    JSON.stringify({
       text: payload,
       voice_id: voiceId,
       output_format: { codec: "mp3", sample_rate: 44100, bit_rate: 128000 },
       language: "en",
     }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    const detail = (await res.text()).slice(0, 400);
+    REQUEST_TIMEOUT_MS
+  );
+  if (res.status < 200 || res.status >= 300) {
+    const detail = new TextDecoder().decode(res.bytes).slice(0, 400);
     throw new Error(`xAI TTS HTTP ${res.status} — ${detail}`);
   }
-  const buf = await res.arrayBuffer();
+  const buf = res.bytes;
 
   // Stopped while the request was in flight — bail out quietly.
   if (my !== seq) return;

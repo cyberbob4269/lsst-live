@@ -23,6 +23,7 @@ import { keyGet, keyStatus } from "./ipc";
 import { cleanForSpeech, speakText, stopSpeaking } from "./tts";
 import { AGENT_TOOLS } from "./tools";
 import { SOCIAL_TOOLS } from "../social/socialTools";
+import { XINTEL_TOOLS } from "../signals/signalTools";
 import {
   loadProviderConfigs,
   loadProviderConfigsFromDisk,
@@ -333,9 +334,10 @@ export default function ChatPanel({
         workspaceRoot: root,
         autoApproveReads,
         workspaceContext,
-        // Built-in IDE tools + the Phase 5 social domain tools; their
-        // executors error cleanly when prerequisites (keys, stack) are missing.
-        tools: [...AGENT_TOOLS, ...SOCIAL_TOOLS],
+        // Built-in IDE tools + the Phase 5 social and Round 9A X-intel domain
+        // tools; their executors error cleanly when prerequisites (keys,
+        // stack) are missing.
+        tools: [...AGENT_TOOLS, ...SOCIAL_TOOLS, ...XINTEL_TOOLS],
         hooks: {
           addEntry: (e) => {
             const id = addEntry(e);
@@ -399,6 +401,22 @@ export default function ChatPanel({
 
   const config = configs.find((c) => c.id === providerId) ?? configs[0];
 
+  /** Provider switch mid-conversation (Phase 7): the visible entries and the
+   *  model history both carry — `historyRef` is provider-agnostic and only
+   *  the NEXT send() reads the new providerId. We just drop a subtle,
+   *  session-only note so the transcript shows where answers changed hands. */
+  const switchProvider = useCallback(
+    (next: ProviderId) => {
+      if (next === providerId) return;
+      setProviderId(next);
+      if (entries.length > 0) {
+        const label = configs.find((c) => c.id === next)?.label ?? next;
+        addEntry({ kind: "note", text: `— now answering: ${label} —`, ephemeral: true });
+      }
+    },
+    [providerId, configs, entries.length, addEntry]
+  );
+
   return (
     <>
       <div className="pane-title chat-title">
@@ -412,7 +430,7 @@ export default function ChatPanel({
         <select
           className="chat-provider"
           value={providerId}
-          onChange={(e) => setProviderId(e.target.value as ProviderId)}
+          onChange={(e) => switchProvider(e.target.value as ProviderId)}
           disabled={running}
           title="Provider + model (edit in Settings)"
         >

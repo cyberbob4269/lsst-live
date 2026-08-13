@@ -75,3 +75,28 @@ milestones (`npm run tauri build -- --bundles nsis`); during changes use `npm ru
   initial commit was explicitly requested at backup time).
 - vera-terminal git: local repo only, no remote configured.
 - Draft-only social posting. Approve/deny gates on all write/shell agent tools.
+
+## Addendum (2026-07-18 post-reboot)
+
+- **Avast Web Shield MITM** broke all bundled-root HTTPS (curl + tauri-plugin-http).
+  Fix: provider calls now go through `src-tauri/src/http_proxy.rs` (reqwest schannel/
+  native-TLS, trusts Windows root store; host allowlist incl. api.x.ai/openai/
+  anthropic/moonshot; `proxy_post`/`proxy_get`, base64 bodies). Live-tested 4xx
+  in-band via cargo test. User also added the 4 API hosts to Avast exceptions.
+- **Phase 7 (first-run)**: Welcome view wizard (providers→docker→postiz→backend→done,
+  boots when setup incomplete, `welcome.dontShowOnBoot` in .vera/settings.json);
+  `postiz_write_env` writes packaging/postiz/.env from the UI (overwrite-guarded);
+  provider switch keeps conversation + ephemeral "now answering" notes.
+- **Round 9A (nervous system)**: Signals tab — Grok Responses API
+  (`POST {xaiBase}/responses`) with remote MCP tool `https://api.x.com/mcp`
+  (server-side by xAI; NO direct api.x.com calls, NOT in allowlist). Files:
+  `src/signals/*` (xintel.ts, sweepDefs.ts = vera-home's 5 topic bundles + watchlist,
+  SignalsView.tsx, signalTools.ts). Agent tools `xintel_ask`/`xintel_sweep` (approval-
+  gated, spend credit). Results persist to `.vera/signals.json`. UNTESTED live:
+  needs user's xAI key; if MCP auth fails, add `authorization` to X_MCP_SERVER const.
+- **Round 9B (UI ports)**: "Dashboards" tab with sub-tabs (TOI Lab | Dashboard |
+  Screensaver) — iframes via extracted `src/deepspace/BackendFrame.tsx`; same backend
+  lifecycle/adopt-don't-duplicate; shared autostart key; iframes never reload on
+  tab switches.
+- Postiz closeout STILL pending (user wizard steps: .env via "Set up Postiz for me",
+  account, X channel, API key, draft test). Milestone NSIS rebuild + commit pending.

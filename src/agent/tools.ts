@@ -162,6 +162,8 @@ export function summarizeCall(name: string, argsJson: string): string {
       const media = Array.isArray(args.mediaPaths) ? args.mediaPaths.length : 0;
       return `channel ${String(args.channelId ?? "?")} — "${text.slice(0, 80)}"${media ? ` (+${media} media)` : ""}`;
     }
+    case "xintel_ask":
+      return String(args.question ?? "?").slice(0, 90);
     default:
       return argsJson.slice(0, 120);
   }

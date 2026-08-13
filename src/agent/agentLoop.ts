@@ -70,6 +70,7 @@ function systemPrompt(root: string, workspaceContext?: string): string {
     "Be concise. Before using a tool, say in one short sentence what you are about to do and why.",
     "Never run destructive commands (deleting files, force-pushing, killing processes) unless the user explicitly asked for that exact action.",
     "Social tools: generate_image / generate_video spend xAI API credit — confirm the exact prompt and slug with the user before calling them. postiz_create_draft creates a DRAFT only: never attempt to publish, schedule, or otherwise live-post; drafts are reviewed by a human in the Postiz UI.",
+    "X-intel tools: xintel_ask / xintel_sweep spend xAI API credit (Grok searches X via server-side MCP tools) — confirm with the user before calling them.",
   ];
   // Snapshot of the user's workspace (file tree, open tabs, selection) —
   // injected only on the first message of a session, never rebuilt per turn.

@@ -216,8 +216,11 @@ export default function SettingsView() {
       </div>
       <p className="settings-note muted">
         Keys are stored in the OS credential store (service “vera-terminal”) and
-        never written to disk. Custom base URLs must also be allowed in
-        src-tauri/capabilities/default.json (http scope).
+        never written to disk. Provider API calls go through the Rust proxy
+        (Windows-native TLS); custom base URLs must match its host allowlist in
+        src-tauri/src/http_proxy.rs. The http scope in
+        src-tauri/capabilities/default.json still applies to localhost and
+        Postiz calls.
       </p>
     </div>
   );

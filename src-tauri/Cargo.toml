@@ -30,3 +30,9 @@ portable-pty = "0.9"
 # get finds nothing, nothing reaches Windows Credential Manager).
 keyring = { version = "3", features = ["windows-native"] }
 base64 = "0.22"
+# HTTP proxy for provider API calls (http_proxy.rs). native-tls ALONE on
+# purpose: on Windows that is schannel, which trusts the Windows root store —
+# so TLS-intercepting AV (e.g. Avast Web Shield, which re-signs with its own
+# root) cannot break provider calls the way reqwest's bundled webpki roots
+# (via tauri-plugin-http) did. No rustls feature is enabled at all.
+reqwest = { version = "0.12", default-features = false, features = ["native-tls"] }

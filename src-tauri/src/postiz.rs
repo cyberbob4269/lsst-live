@@ -15,9 +15,10 @@
 //!                     keep Postgres/Redis data and uploads).
 //!
 //! `<postiz dir>` resolves (first hit with a docker-compose.yml wins) from:
-//! `$VERA_POSTIZ_DIR`, then `<exe dir>/postiz` (packaged installs, where the
-//! bundle resources place the stack next to the executable), then the dev
-//! fallback `<repo>/packaging/postiz`.
+//! `$VERA_POSTIZ_DIR`, then the dev repo path `<repo>/packaging/postiz`
+//! (single source of truth for the live `.env`; silently absent on machines
+//! that only have the installer), then `<exe dir>/postiz` (packaged installs,
+//! where the bundle resources place the stack next to the executable).
 //!
 //! The compose project is named `vera-postiz` (top-level `name:` in the
 //! compose file), so `ps`/`down` resolve the same project from any cwd.
@@ -205,13 +206,17 @@ impl PostizManager {
 /// Candidate Postiz compose directories, in resolution order:
 ///
 ///   1. `VERA_POSTIZ_DIR` env override (absolute path).
-///   2. `<dir of current exe>/postiz` — the packaged layout, where the
+///   2. `<repo>/packaging/postiz` — the dev repo path. In packaged installs
+///      CARGO_MANIFEST_DIR is a build-time source path that does not exist on
+///      the installing machine, so this candidate silently falls through.
+///   3. `<dir of current exe>/postiz` — the packaged layout, where the
 ///      bundle resource mapping `{"../packaging/postiz": "postiz"}` installs
 ///      the compose stack next to the executable.
-///   3. `<repo>/packaging/postiz` — dev fallback (CARGO_MANIFEST_DIR is
-///      `src-tauri/`).
 ///
-/// The first candidate containing `docker-compose.yml` wins.
+/// The first candidate containing `docker-compose.yml` wins. The repo path is
+/// preferred in dev on purpose: the Tauri bundler ALSO copies the resource
+/// tree next to the debug exe (target/*/postiz), and letting that shadow copy
+/// win scattered live config (.env) into a build-artifact directory.
 fn postiz_dir_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Ok(dir) = std::env::var("VERA_POSTIZ_DIR") {
@@ -219,14 +224,14 @@ fn postiz_dir_candidates() -> Vec<PathBuf> {
             candidates.push(PathBuf::from(dir));
         }
     }
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if let Some(repo) = manifest.parent() {
+        candidates.push(repo.join("packaging").join("postiz"));
+    }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
             candidates.push(exe_dir.join("postiz"));
         }
-    }
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    if let Some(repo) = manifest.parent() {
-        candidates.push(repo.join("packaging").join("postiz"));
     }
     candidates
 }
@@ -254,6 +259,37 @@ fn compose_file() -> Result<PathBuf, String> {
 
 fn env_file() -> Result<PathBuf, String> {
     Ok(postiz_dir()?.join(".env"))
+}
+
+/* ---- .env writing (Phase 7 first-run) ---- */
+
+/// Render the `.env` contents from the `.env.example` template, substituting
+/// JWT_SECRET and the optional X credentials. Every other line — comments,
+/// URLs, ordering, line endings — stays byte-identical: this is a text
+/// template, not a rewrite.
+fn render_env_template(
+    template: &str,
+    jwt_secret: &str,
+    x_api_key: Option<&str>,
+    x_api_secret: Option<&str>,
+) -> String {
+    let mut out = String::with_capacity(template.len());
+    // split_inclusive keeps each line's original terminator, so CRLF/LF and a
+    // missing trailing newline all survive untouched.
+    for chunk in template.split_inclusive('\n') {
+        let body = chunk.trim_end_matches(|c| c == '\r' || c == '\n');
+        let ending = &chunk[body.len()..];
+        if body.starts_with("JWT_SECRET=") {
+            out.push_str(&format!("JWT_SECRET={jwt_secret}{ending}"));
+        } else if body.starts_with("X_API_KEY=") {
+            out.push_str(&format!("X_API_KEY={}{ending}", x_api_key.unwrap_or("")));
+        } else if body.starts_with("X_API_SECRET=") {
+            out.push_str(&format!("X_API_SECRET={}{ending}", x_api_secret.unwrap_or("")));
+        } else {
+            out.push_str(chunk);
+        }
+    }
+    out
 }
 
 /* ---- docker probes ---- */
@@ -443,4 +479,60 @@ pub async fn postiz_stop(state: State<'_, Arc<PostizManager>>) -> Result<PostizS
     tauri::async_runtime::spawn_blocking(move || mgr.stop())
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Phase 7 first-run: write `<postiz dir>/.env` from `.env.example` with the
+/// given JWT secret and optional X credentials substituted in. Refuses to
+/// clobber an existing `.env` unless `overwrite` is true (the user may have
+/// written one by hand). Values are NEVER logged. Returns the path written.
+#[tauri::command]
+pub async fn postiz_write_env(
+    state: State<'_, Arc<PostizManager>>,
+    jwt_secret: String,
+    x_api_key: Option<String>,
+    x_api_secret: Option<String>,
+    overwrite: bool,
+) -> Result<String, String> {
+    let mgr = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if jwt_secret.trim().is_empty() {
+            return Err("jwtSecret must not be empty".to_string());
+        }
+        for (name, value) in [
+            ("jwtSecret", jwt_secret.as_str()),
+            ("xApiKey", x_api_key.as_deref().unwrap_or("")),
+            ("xApiSecret", x_api_secret.as_deref().unwrap_or("")),
+        ] {
+            if value.contains(|c| c == '\n' || c == '\r') {
+                return Err(format!("{name} must be a single line"));
+            }
+        }
+        let dir = postiz_dir()?;
+        let example = dir.join(".env.example");
+        let target = dir.join(".env");
+        if target.exists() && !overwrite {
+            return Err(format!(
+                "{} already exists — not overwriting it.",
+                target.display()
+            ));
+        }
+        let template = std::fs::read_to_string(&example)
+            .map_err(|e| format!("cannot read {}: {e}", example.display()))?;
+        let rendered = render_env_template(
+            &template,
+            jwt_secret.trim(),
+            x_api_key.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+            x_api_secret.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+        );
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        }
+        std::fs::write(&target, rendered)
+            .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
+        mgr.push_log("[vera] wrote .env from .env.example (values not logged)".into());
+        Ok(target.display().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

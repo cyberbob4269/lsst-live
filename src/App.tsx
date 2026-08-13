@@ -11,9 +11,39 @@ import ChatPanel from "./agent/ChatPanel";
 import type { EditorSnapshot } from "./agent/workspaceContext";
 import SettingsView from "./settings/SettingsView";
 import DeepSpaceView from "./deepspace/DeepSpaceView";
+import DashboardsView from "./dashboards/DashboardsView";
 import SocialView from "./social/SocialView";
+import SignalsView from "./signals/SignalsView";
+import WelcomeView from "./welcome/WelcomeView";
+import { loadSettingsFile } from "./agent/settingsStore";
+import { keyStatus } from "./agent/ipc";
+import { postizStatus } from "./social/ipc";
 
-export type ViewId = "ide" | "deep-space" | "social" | "settings";
+export type ViewId =
+  | "welcome"
+  | "ide"
+  | "deep-space"
+  | "dashboards"
+  | "social"
+  | "signals"
+  | "settings";
+
+/** Boot-time first-run gate (Phase 7): setup counts as complete when at
+ *  least one LLM provider key is stored AND Postiz is healthy. key_status
+ *  also reports "postiz" — only the four LLM providers count here. */
+const LLM_PROVIDER_IDS = ["xai", "openai", "anthropic", "kimi"];
+
+async function shouldShowWelcome(): Promise<boolean> {
+  const [file, keys, postiz] = await Promise.all([
+    loadSettingsFile().catch(() => null),
+    keyStatus().catch(() => []),
+    postizStatus().catch(() => null),
+  ]);
+  if (file?.welcome.dontShowOnBoot) return false;
+  const hasBrain = keys.some((k) => LLM_PROVIDER_IDS.includes(k.provider) && k.has_key);
+  const postizHealthy = postiz?.healthy ?? false;
+  return !hasBrain || !postizHealthy;
+}
 
 let toastSeq = 0;
 
@@ -247,6 +277,22 @@ function IdeView({ visible, onOpenSettings }: { visible: boolean; onOpenSettings
 export default function App() {
   const [view, setView] = useState<ViewId>("ide");
 
+  // First-run gate: while setup is incomplete (no LLM key or Postiz not
+  // healthy) the app boots into the Welcome concierge instead of the IDE,
+  // unless the user asked not to be shown it. The IDE mounts anyway
+  // (keep-alive), so the late switch costs nothing.
+  useEffect(() => {
+    let cancelled = false;
+    shouldShowWelcome()
+      .then((show) => {
+        if (!cancelled && show) setView("welcome");
+      })
+      .catch((err) => console.error("[vera] first-run gate failed", err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Keep-alive: every top-level view stays mounted for the app's lifetime;
   // switching tabs only toggles display. Chat history, Monaco tab/view state,
   // the xterm PTY and the Deep Space iframe all survive view switches.
@@ -255,14 +301,27 @@ export default function App() {
     <div className="app-shell">
       <TopBar active={view} onSelect={setView} />
       <main className="app-main">
+        <div className={`view-keepalive${view === "welcome" ? "" : " is-hidden"}`}>
+          <WelcomeView
+            visible={view === "welcome"}
+            onOpenIde={() => setView("ide")}
+            onOpenSocial={() => setView("social")}
+          />
+        </div>
         <div className={`view-keepalive${view === "ide" ? "" : " is-hidden"}`}>
           <IdeView visible={view === "ide"} onOpenSettings={() => setView("settings")} />
         </div>
         <div className={`view-keepalive${view === "deep-space" ? "" : " is-hidden"}`}>
           <DeepSpaceView visible={view === "deep-space"} />
         </div>
+        <div className={`view-keepalive${view === "dashboards" ? "" : " is-hidden"}`}>
+          <DashboardsView visible={view === "dashboards"} />
+        </div>
         <div className={`view-keepalive${view === "social" ? "" : " is-hidden"}`}>
-          <SocialView visible={view === "social"} />
+          <SocialView visible={view === "social"} onOpenWelcome={() => setView("welcome")} />
+        </div>
+        <div className={`view-keepalive${view === "signals" ? "" : " is-hidden"}`}>
+          <SignalsView visible={view === "signals"} />
         </div>
         <div className={`view-keepalive${view === "settings" ? "" : " is-hidden"}`}>
           <SettingsView />

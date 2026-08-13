@@ -16,13 +16,16 @@
 //
 // The base URL comes from the Settings provider config (xAI entry); the API
 // key comes from the OS credential store via key_get("xai") — never from
-// disk, never logged.
+// disk, never logged. All xAI requests (generation POSTs, video-status poll
+// GETs, and media downloads) go through the native-TLS Rust proxy
+// (../agent/httpProxy.ts) so TLS-intercepting AV cannot break them; the
+// proxy's hardcoded host allowlist covers api.x.ai, same as the old
+// plugin-http capability scope did.
 
-import { fetch } from "@tauri-apps/plugin-http";
+import { proxyGet, proxyPost, bytesToBase64 } from "../agent/httpProxy";
 import { keyGet } from "../agent/ipc";
 import { loadProviderConfigs } from "../agent/providers";
 import { fsReadFile, fsWriteBinary, fsWriteFile } from "../ide/ipc";
-import { arrayBufferToBase64 } from "./binary";
 
 const OUT_DIR = "social-media";
 const CATALOG_PATH = `${OUT_DIR}/catalog.json`;
@@ -68,30 +71,29 @@ async function xaiAuth(): Promise<{ baseUrl: string; apiKey: string }> {
 }
 
 async function postJson<T>(url: string, apiKey: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
+  const res = await proxyPost(
+    url,
+    {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    const text = (await res.text()).slice(0, 500);
+    JSON.stringify(body),
+    REQUEST_TIMEOUT_MS
+  );
+  if (res.status < 200 || res.status >= 300) {
+    const text = new TextDecoder().decode(res.bytes).slice(0, 500);
     throw new Error(`xAI API HTTP ${res.status} — ${text}`);
   }
-  return (await res.json()) as T;
+  return JSON.parse(new TextDecoder().decode(res.bytes)) as T;
 }
 
 /** Download a remote media URL into the workspace via fs_write_binary. */
 async function downloadToWorkspace(remoteUrl: string, relPath: string): Promise<void> {
-  const res = await fetch(remoteUrl, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-  if (!res.ok) {
+  const res = await proxyGet(remoteUrl, {}, REQUEST_TIMEOUT_MS);
+  if (res.status < 200 || res.status >= 300) {
     throw new Error(`media download HTTP ${res.status}`);
   }
-  const buf = await res.arrayBuffer();
-  await fsWriteBinary(relPath, arrayBufferToBase64(buf));
+  await fsWriteBinary(relPath, bytesToBase64(res.bytes));
 }
 
 /** Read-modify-write the catalog; tolerates a missing/corrupt file. */
@@ -176,15 +178,16 @@ export async function generateVideo(
   const deadline = Date.now() + VIDEO_TIMEOUT_MS;
   let result: VideoPollResponse | null = null;
   while (Date.now() < deadline) {
-    const res = await fetch(`${baseUrl}/videos/${requestId}`, {
-      headers: { authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(60_000),
-    });
+    const res = await proxyGet(
+      `${baseUrl}/videos/${requestId}`,
+      { authorization: `Bearer ${apiKey}` },
+      60_000
+    );
     if (res.status !== 200 && res.status !== 202) {
-      const text = (await res.text()).slice(0, 500);
+      const text = new TextDecoder().decode(res.bytes).slice(0, 500);
       throw new Error(`video poll HTTP ${res.status} — ${text}`);
     }
-    const data = (await res.json()) as VideoPollResponse;
+    const data = JSON.parse(new TextDecoder().decode(res.bytes)) as VideoPollResponse;
     if (data.status === "done") {
       result = data;
       break;

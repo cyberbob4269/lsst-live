@@ -6,9 +6,12 @@ interface ViewTabsProps {
 }
 
 const TABS: Array<{ id: ViewId; label: string }> = [
+  { id: "welcome", label: "Welcome" },
   { id: "ide", label: "IDE" },
   { id: "deep-space", label: "Deep Space" },
+  { id: "dashboards", label: "Dashboards" },
   { id: "social", label: "Social" },
+  { id: "signals", label: "Signals" },
   { id: "settings", label: "Settings" },
 ];
 
