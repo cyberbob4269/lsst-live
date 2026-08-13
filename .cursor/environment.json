@@ -1,0 +1,11 @@
+{
+  "name": "LSST Live",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "vite",
+      "command": "npm run dev"
+    }
+  ],
+  "ports": [1420]
+}
