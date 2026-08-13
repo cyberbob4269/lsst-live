@@ -1,4 +1,4 @@
-// Vera Terminal — Tauri shell.
+// LSST Live — Tauri shell.
 // Phase 1: plugins (opener, http) + F11 fullscreen toggle injected at runtime
 // so the frontend stays portable. The sidecar module holds the generic
 // spawn / healthz-poll / tree-kill helpers.

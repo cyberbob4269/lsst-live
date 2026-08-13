@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Vera Terminal",
+  "productName": "LSST Live",
   "version": "0.1.0",
-  "identifier": "com.veraathome.terminal",
+  "identifier": "com.netwrx.lsstlive",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Vera Terminal",
+        "title": "LSST Live",
         "width": 1600,
         "height": 900,
         "minWidth": 1024,
@@ -31,7 +31,7 @@
   "bundle": {
     "active": true,
     "targets": "nsis",
-    "publisher": "Vera@Home",
+    "publisher": "Netwrx Solutions Limited",
     "resources": {
       "../packaging/postiz": "postiz"
     },

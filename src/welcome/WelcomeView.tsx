@@ -63,10 +63,10 @@ const STEP_META: Array<{ id: StepId; label: string }> = [
 
 /** Neutral one-liners for the done step's "anytime later" list — no shame. */
 const LATER_COPY: Record<string, string> = {
-  providers: "Give Vera a brain — add any provider key (here or in Settings).",
-  docker: "Install Docker Desktop (needed for the social tools).",
-  postiz: "Set up Postiz for social posting.",
-  backend: "Start the Vera backend (powers the dashboards).",
+  providers: "Add an AI provider key (here or in Settings) for chat and agent tools.",
+  docker: "Install Docker Desktop (optional — only needed for social posting).",
+  postiz: "Set up Postiz for social posting (optional).",
+  backend: "Set a vera-home path in Settings and start the local backend (optional).",
 };
 
 interface KeyFeedback {
@@ -125,6 +125,7 @@ export default function WelcomeView({
   /* ---- backend step ---- */
   const [beBusy, setBeBusy] = useState(false);
   const [beError, setBeError] = useState<string | null>(null);
+  const [veraHomePath, setVeraHomePath] = useState<string | null>(null);
 
   /* ---- boot preference ---- */
   const [dontShow, setDontShow] = useState(false);
@@ -176,6 +177,7 @@ export default function WelcomeView({
         if (cancelled) return;
         setDontShow(file?.welcome.dontShowOnBoot ?? false);
         setConfigs(disk);
+        setVeraHomePath(file?.backend.veraHomePath?.trim() || null);
       } catch (err) {
         console.error("[vera] welcome settings hydrate failed", err);
       }
@@ -190,11 +192,12 @@ export default function WelcomeView({
   const dockerOk = postiz?.dockerAvailable ?? false;
   const postizOk = !!postiz && postiz.state === "running" && postiz.healthy;
   const backendOk = backend?.healthy ?? false;
+  const hasBackendPath = Boolean(veraHomePath);
   const doneMap: Record<StepId, boolean> = {
     providers: anyKey,
     docker: dockerOk,
     postiz: postizOk,
-    backend: backendOk,
+    backend: backendOk || !hasBackendPath,
     done: true,
   };
 
@@ -205,7 +208,7 @@ export default function WelcomeView({
         providers: anyKey,
         docker: dockerOk,
         postiz: postizOk,
-        backend: backendOk,
+        backend: backendOk || !hasBackendPath,
       };
       const skipSet = new Set(skipped);
       if (alsoSkip) skipSet.add(alsoSkip);
@@ -219,7 +222,7 @@ export default function WelcomeView({
       }
       setCurrent("done");
     },
-    [anyKey, dockerOk, postizOk, backendOk, skipped]
+    [anyKey, dockerOk, postizOk, backendOk, hasBackendPath, skipped]
   );
 
   // Auto-advance: whenever the current step turns green, move on — except
@@ -346,16 +349,20 @@ export default function WelcomeView({
 
   const startBackend = useCallback(async () => {
     if (beBusy) return;
+    if (!veraHomePath) {
+      setBeError("Set the vera-home path in Settings first, or skip and use public labs.");
+      return;
+    }
     setBeBusy(true);
     setBeError(null);
     try {
-      setBackend(await veraBackendStart());
+      setBackend(await veraBackendStart(veraHomePath));
     } catch (err) {
       setBeError(String(err));
     } finally {
       setBeBusy(false);
     }
-  }, [beBusy]);
+  }, [beBusy, veraHomePath]);
 
   /* ---- boot preference ---- */
 
@@ -376,10 +383,11 @@ export default function WelcomeView({
     <div className="welcome-wrap">
       <div className="welcome-head">
         <div>
-          <h1 className="welcome-title">Welcome to Vera</h1>
+          <h1 className="welcome-title">Welcome to LSST Live</h1>
           <p className="muted welcome-sub">
-            Let's get you set up — a few small steps, about two minutes. Everything
-            here is skippable; you can explore right away and come back anytime.
+            Deep-space dashboards, an optional AI IDE, and optional social tools.
+            Everything here is skippable — explore the Dashboards tab right away
+            (public labs work with no setup).
           </p>
         </div>
         <label className="chat-toggle welcome-boot">
@@ -412,11 +420,11 @@ export default function WelcomeView({
         <section className="settings-card welcome-card">
           <header className="settings-card-head">
             <span className={`settings-dot${anyKey ? " is-set" : ""}`} />
-            <h2 className="settings-card-title">Give Vera a brain</h2>
+            <h2 className="settings-card-title">AI provider (optional)</h2>
           </header>
           <p className="muted soc-p">
-            Paste a key from any provider you have. One is enough to start — you
-            can add the others later in Settings.
+            Paste a key from any provider for chat and agent tools. Skip this to
+            use dashboards and labs without an API key.
           </p>
           {connected.length > 0 && (
             <p className="settings-feedback is-ok">Connected this session: {connected.join(", ")}</p>
@@ -499,12 +507,11 @@ export default function WelcomeView({
         <section className="settings-card welcome-card">
           <header className="settings-card-head">
             <span className={`settings-dot${dockerOk ? " is-set" : ""}`} />
-            <h2 className="settings-card-title">Docker, for the social tools</h2>
+            <h2 className="settings-card-title">Docker (optional — social tools)</h2>
           </header>
           <p className="muted soc-p">
-            Vera's social posting (Postiz) runs in Docker containers. Docker
-            Desktop is free for personal use — install it, start it, and this
-            step completes itself.
+            Social posting via Postiz runs in Docker containers. Skip this if you
+            only want dashboards and labs.
           </p>
           {dockerOk ? (
             <p className="settings-feedback is-ok">✓ Docker found.</p>
@@ -533,11 +540,11 @@ export default function WelcomeView({
         <section className="settings-card welcome-card">
           <header className="settings-card-head">
             <span className={`settings-dot${postizOk ? " is-set" : ""}`} />
-            <h2 className="settings-card-title">Set up Postiz (social posting)</h2>
+            <h2 className="settings-card-title">Postiz (optional — social posting)</h2>
           </header>
           <p className="muted soc-p">
-            Postiz is the little local server that schedules and sends your posts.
-            Vera writes its config file for you — one click, nothing to edit by hand.
+            Postiz schedules and sends posts from the Social tab. LSST Live can
+            write its config file for you — one click, nothing to edit by hand.
           </p>
 
           {!postiz?.envPresent && (
@@ -659,17 +666,32 @@ export default function WelcomeView({
         <section className="settings-card welcome-card">
           <header className="settings-card-head">
             <span className={`settings-dot${backendOk ? " is-set" : ""}`} />
-            <h2 className="settings-card-title">The Vera backend</h2>
+            <h2 className="settings-card-title">Local dashboard backend (optional)</h2>
           </header>
           <p className="muted soc-p">
-            One background service powers the dashboards (Deep Space). Start it
-            once — if it's already running, Vera simply adopts it.
+            A local vera-home checkout serves labs on 127.0.0.1:8765. Public hosted
+            labs work without this — set the path in Settings if you have vera-home
+            locally, then start the backend here.
           </p>
+          {!hasBackendPath && (
+            <p className="muted soc-p">
+              No vera-home path configured.{" "}
+              <button
+                className="ds-link"
+                onClick={() => void openUrl("https://cyberbob4269.github.io/lsst-live-site/labs/")}
+              >
+                Open public labs
+              </button>
+              {" "}
+              or set the path in Settings.
+            </p>
+          )}
           {backendOk ? (
             <p className="settings-feedback is-ok">
-              ✓ Dashboard live{backend?.mode === "external" ? " (already running — adopted)" : ""}.
+              ✓ Local backend live
+              {backend?.mode === "external" ? " (already running — adopted)" : ""}.
             </p>
-          ) : (
+          ) : hasBackendPath ? (
             <>
               <div className="welcome-actions">
                 <button
@@ -692,7 +714,7 @@ export default function WelcomeView({
                 </span>
               )}
             </>
-          )}
+          ) : null}
           <div className="welcome-actions">
             <button className="ds-link" onClick={() => skipStep("backend")}>
               Skip for now
@@ -709,7 +731,7 @@ export default function WelcomeView({
           <ul className="soc-list">
             {anyKey && (
               <li>
-                <span className="settings-dot is-set" /> Vera has a brain —{" "}
+                <span className="settings-dot is-set" /> AI provider connected —{" "}
                 {connectedLabels.join(", ") || "API key saved"}.
               </li>
             )}
@@ -726,7 +748,7 @@ export default function WelcomeView({
             )}
             {backendOk && (
               <li>
-                <span className="settings-dot is-set" /> Dashboard live (vera-home backend).
+                <span className="settings-dot is-set" /> Local dashboard backend running.
               </li>
             )}
           </ul>

@@ -1,7 +1,7 @@
 [package]
 name = "vera-terminal"
 version = "0.1.0"
-description = "Vera Terminal — lightweight AI IDE/terminal"
+description = "LSST Live — lightweight AI IDE for deep-space dashboards"
 authors = ["you"]
 edition = "2021"
 

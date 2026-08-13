@@ -12,7 +12,7 @@ export default function TopBar({ active, onSelect }: TopBarProps) {
     <header className="topbar">
       <div className="topbar-title">
         <span className="topbar-dot" />
-        Vera Terminal
+        LSST Live
       </div>
       <ViewTabs active={active} onSelect={onSelect} />
     </header>

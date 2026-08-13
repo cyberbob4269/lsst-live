@@ -26,12 +26,17 @@ export interface SettingsFile {
      *  first-run setup is incomplete. */
     dontShowOnBoot: boolean | null;
   };
+  backend: {
+    /** Local vera-home checkout used to spawn the dashboard backend (optional). */
+    veraHomePath: string | null;
+  };
 }
 
 const EMPTY_SETTINGS: SettingsFile = {
   providers: {},
   chat: { selectedProviderId: null, autoApproveReads: null, speakReplies: null },
   welcome: { dontShowOnBoot: null },
+  backend: { veraHomePath: null },
 };
 
 /** Read `.vera/settings.json`; returns null when missing or corrupt (callers
@@ -50,6 +55,9 @@ export async function loadSettingsFile(): Promise<SettingsFile | null> {
       welcome: {
         dontShowOnBoot: raw.welcome?.dontShowOnBoot ?? null,
       },
+      backend: {
+        veraHomePath: raw.backend?.veraHomePath ?? null,
+      },
     };
   } catch {
     return null;
@@ -63,6 +71,7 @@ export async function saveSettingsFile(patch: {
   providers?: SettingsFile["providers"];
   chat?: Partial<SettingsFile["chat"]>;
   welcome?: Partial<SettingsFile["welcome"]>;
+  backend?: Partial<SettingsFile["backend"]>;
 }): Promise<void> {
   try {
     const current = (await loadSettingsFile()) ?? EMPTY_SETTINGS;
@@ -70,6 +79,7 @@ export async function saveSettingsFile(patch: {
       providers: patch.providers ?? current.providers,
       chat: { ...current.chat, ...patch.chat },
       welcome: { ...current.welcome, ...patch.welcome },
+      backend: { ...current.backend, ...patch.backend },
     };
     await fsEnsureDir(VERA_DIR);
     await fsWriteFile(SETTINGS_PATH, JSON.stringify(next, null, 2));
