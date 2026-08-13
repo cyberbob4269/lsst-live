@@ -309,7 +309,7 @@ function ApiKeyCard({ onSaved }: { onSaved: () => void }) {
   return (
     <div className="soc-center">
       <section className="settings-card soc-card">
-        <h2 className="settings-card-title">Connect Vera to Postiz</h2>
+        <h2 className="settings-card-title">Connect LSST Live to Postiz</h2>
         <ol className="muted soc-steps">
           <li>
             Open Postiz at <code>http://localhost:4007</code> and create your account.

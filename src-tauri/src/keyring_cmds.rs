@@ -13,7 +13,7 @@
 use keyring::Entry;
 use serde::Serialize;
 
-const SERVICE: &str = "vera-terminal";
+const SERVICE: &str = "lsst-live";
 
 /// Fixed provider list — the four LLM providers must match
 /// `src/agent/providers.ts` on the frontend; "postiz" is the Social suite's

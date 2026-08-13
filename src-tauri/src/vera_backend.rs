@@ -28,7 +28,6 @@ use tauri::State;
 
 use crate::sidecar;
 
-const DEFAULT_VERA_HOME: &str = "C:/Users/Vera-at-home/projects/vera-home";
 const HEALTH_PORT: u16 = 8765;
 const HEALTH_PATH: &str = "/healthz";
 const MAX_LOG_LINES: usize = 50;
@@ -141,8 +140,17 @@ impl VeraBackendManager {
         let home = vera_home_path
             .filter(|p| !p.trim().is_empty())
             .map(PathBuf::from)
-            .or_else(|| self.last_home.lock().ok().and_then(|g| g.clone()))
-            .unwrap_or_else(|| PathBuf::from(DEFAULT_VERA_HOME));
+            .or_else(|| self.last_home.lock().ok().and_then(|g| g.clone()));
+
+        let home = match home {
+            Some(h) if !h.as_os_str().is_empty() => h,
+            _ => {
+                return Err(
+                    "No vera-home path configured — set it in Settings before starting the backend"
+                        .into(),
+                );
+            }
+        };
 
         let script = home.join("scripts").join("launch_backend.py");
         if !script.is_file() {

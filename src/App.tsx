@@ -16,8 +16,6 @@ import SocialView from "./social/SocialView";
 import SignalsView from "./signals/SignalsView";
 import WelcomeView from "./welcome/WelcomeView";
 import { loadSettingsFile } from "./agent/settingsStore";
-import { keyStatus } from "./agent/ipc";
-import { postizStatus } from "./social/ipc";
 
 export type ViewId =
   | "welcome"
@@ -28,21 +26,11 @@ export type ViewId =
   | "signals"
   | "settings";
 
-/** Boot-time first-run gate (Phase 7): setup counts as complete when at
- *  least one LLM provider key is stored AND Postiz is healthy. key_status
- *  also reports "postiz" — only the four LLM providers count here. */
-const LLM_PROVIDER_IDS = ["xai", "openai", "anthropic", "kimi"];
-
+/** Boot-time welcome: shown on first launch until the user opts out via
+ *  "Don't show on startup". Social (Postiz/Docker) and API keys are optional. */
 async function shouldShowWelcome(): Promise<boolean> {
-  const [file, keys, postiz] = await Promise.all([
-    loadSettingsFile().catch(() => null),
-    keyStatus().catch(() => []),
-    postizStatus().catch(() => null),
-  ]);
-  if (file?.welcome.dontShowOnBoot) return false;
-  const hasBrain = keys.some((k) => LLM_PROVIDER_IDS.includes(k.provider) && k.has_key);
-  const postizHealthy = postiz?.healthy ?? false;
-  return !hasBrain || !postizHealthy;
+  const file = await loadSettingsFile().catch(() => null);
+  return !file?.welcome.dontShowOnBoot;
 }
 
 let toastSeq = 0;
@@ -277,9 +265,7 @@ function IdeView({ visible, onOpenSettings }: { visible: boolean; onOpenSettings
 export default function App() {
   const [view, setView] = useState<ViewId>("ide");
 
-  // First-run gate: while setup is incomplete (no LLM key or Postiz not
-  // healthy) the app boots into the Welcome concierge instead of the IDE,
-  // unless the user asked not to be shown it. The IDE mounts anyway
+  // Welcome on first launch unless the user opted out. The IDE mounts anyway
   // (keep-alive), so the late switch costs nothing.
   useEffect(() => {
     let cancelled = false;

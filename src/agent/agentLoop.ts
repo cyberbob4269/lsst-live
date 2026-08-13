@@ -64,7 +64,7 @@ const MAX_OUTPUT_PREVIEW_CHARS = 4_096;
 
 function systemPrompt(root: string, workspaceContext?: string): string {
   const lines = [
-    "You are the Vera Terminal agent — an AI pair-programmer embedded in a small IDE.",
+    "You are the LSST Live agent — an AI pair-programmer embedded in a small IDE.",
     `The workspace root is: ${root}`,
     "All file and shell tools are confined to this workspace; prefer paths relative to the root.",
     "Be concise. Before using a tool, say in one short sentence what you are about to do and why.",
